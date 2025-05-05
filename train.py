@@ -19,6 +19,7 @@ def create_yolo_dataset(data_dir, annotations_file, output_dir, val_split=0.2):
         output_dir: Directory to save formatted dataset
         val_split: Fraction of data to use for validation
     """
+    import re
     # Create directories
     os.makedirs(output_dir, exist_ok=True)
     train_dir = os.path.join(output_dir, 'train')
@@ -81,35 +82,35 @@ def create_yolo_dataset(data_dir, annotations_file, output_dir, val_split=0.2):
                 parts = annotation.strip().split(' ')
                 img_name_ann = parts[0]
                 
-                # Extract all bounding boxes and classes
-                i = 1
-                while i < len(parts):
-                    if parts[i].startswith('('):
-                        box_str = parts[i] + ' ' + parts[i+1]
-                        class_name = parts[i+2]
-                        i += 3
+                # Let's use a more robust parsing approach
+                # The annotation format is expected to be: filename.jpg (x1,y1)-(x2,y2) class
+                # First, let's skip the image name
+                annotation_text = ' '.join(parts[1:])
+                
+                # Now extract all (x,y)-(x,y) class patterns
+                import re
+                box_pattern = r'\((\d+),(\d+)\)-\((\d+),(\d+)\)\s+(\w+)'
+                matches = re.findall(box_pattern, annotation_text)
+                
+                for match in matches:
+                    x1, y1, x2, y2, class_name = match
+                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                    
+                    # Convert to YOLO format (center_x, center_y, width, height) - normalized
+                    center_x = (x1 + x2) / 2 / width
+                    center_y = (y1 + y2) / 2 / height
+                    box_width = (x2 - x1) / width
+                    box_height = (y2 - y1) / height
+                    
+                    # Class index
+                    if class_name not in class_map:
+                        print(f"Warning: Unknown class '{class_name}' in {annotation}")
+                        continue
                         
-                        # Extract coordinates
-                        coords = box_str.replace('(', '').replace(')', '').replace('-', ' ').split()
-                        if len(coords) != 4:
-                            print(f"Warning: Invalid coordinates in {annotation}")
-                            continue
-                            
-                        x1, y1, x2, y2 = map(int, coords)
-                        
-                        # Convert to YOLO format (center_x, center_y, width, height) - normalized
-                        center_x = (x1 + x2) / 2 / width
-                        center_y = (y1 + y2) / 2 / height
-                        box_width = (x2 - x1) / width
-                        box_height = (y2 - y1) / height
-                        
-                        # Class index
-                        class_idx = class_map[class_name]
-                        
-                        # Write to label file
-                        label_file.write(f"{class_idx} {center_x} {center_y} {box_width} {box_height}\n")
-                    else:
-                        i += 1
+                    class_idx = class_map[class_name]
+                    
+                    # Write to label file
+                    label_file.write(f"{class_idx} {center_x} {center_y} {box_width} {box_height}\n")
     
     # Create YAML config file
     dataset_yaml = {
@@ -144,7 +145,7 @@ def train_model(config_path, model_size='n', epochs=100, batch_size=16, device='
     model = YOLO(f'yolov8{model_size}.pt')
     
     # Train model
-    model.train(
+    results = model.train(
         data=config_path,
         epochs=epochs,
         batch=batch_size,
@@ -158,16 +159,24 @@ def train_model(config_path, model_size='n', epochs=100, batch_size=16, device='
     
     # Copy best model to a standardized location
     runs_dir = Path(output_dir) / 'stickers_detector'
-    last_run = sorted(runs_dir.iterdir(), key=lambda x: os.path.getmtime(x))[-1] if runs_dir.exists() and any(runs_dir.iterdir()) else None
     
-    if last_run:
-        best_model = last_run / 'weights' / 'best.pt'
-        if best_model.exists():
+    best_model = runs_dir / 'weights' / 'best.pt'
+    if best_model.exists():
+        target_path = Path(output_dir) / 'best.pt'
+        shutil.copy2(best_model, target_path)
+        print(f"Best model saved to {target_path}")
+        return str(target_path)
+    else:
+        print(f"Warning: Could not find best model at {best_model}")
+        # Fallback to last model
+        last_model = runs_dir / 'weights' / 'last.pt'
+        if last_model.exists():
             target_path = Path(output_dir) / 'best.pt'
-            shutil.copy2(best_model, target_path)
-            print(f"Best model saved to {target_path}")
+            shutil.copy2(last_model, target_path)
+            print(f"Last model saved to {target_path} (as best.pt)")
             return str(target_path)
     
+    print(f"Models should be available in {runs_dir}/weights/")
     return None
 
 def main():
