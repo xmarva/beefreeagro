@@ -80,6 +80,10 @@ def run_detection(model_path, test_dir, result_dir, conf_threshold=0.25):
         result_dir: Directory to save results
         conf_threshold: Confidence threshold for detection
     """
+    print(f"Model path: {model_path}")
+    print(f"Test directory: {test_dir}")
+    print(f"Result directory: {result_dir}")
+    print(f"Confidence threshold: {conf_threshold}")
     # Create result directory if not exists
     os.makedirs(result_dir, exist_ok=True)
     
