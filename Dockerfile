@@ -41,7 +41,8 @@ RUN pip install torch torchvision torchaudio --extra-index-url https://download.
 RUN pip install pillow
 
 # Рабочая директория
-WORKDIR /app
+RUN git clone https://github.com/xmarva/beefreeagro.git
+WORKDIR /beefree
 
 # Переменная окружения для определения, использовать ли GPU
 ENV USE_GPU=True
