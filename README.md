@@ -71,10 +71,14 @@ For Windows machines, use the provided batch scripts:
 - Place sticker images in `data/raw/stickers/`
 - Place background images in `data/raw/background/`
 
+You can [download raw data here](https://drive.google.com/file/d/13Z_CTtKU9mfbX-AH2COw5HBsGW6boltu/view?usp=sharing)
+
 ### 2. Generate Synthetic Dataset
 ```bash
 python create_data.py --output_dir data/synth/imgs --annotations_file data/synth/annotations.txt
 ```
+
+You can download the synthetic dataset here
 
 This will:
 - Generate synthetic images with stickers placed on backgrounds

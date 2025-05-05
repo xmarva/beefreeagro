@@ -126,6 +126,92 @@ class SyntheticDataGenerator:
         # Return dominant color and brightness
         return np.array([avg_h, avg_s, avg_v]), brightness
 
+    def _apply_perspective_transform(self, image: np.ndarray) -> np.ndarray:
+        """
+        Apply perspective transformation to the image
+        
+        Args:
+            image: Original image with alpha channel
+            
+        Returns:
+            Perspective transformed image
+        """
+        height, width = image.shape[:2]
+        
+        # Generate perspective transformation parameters with normal distribution
+        # The larger the values, the more extreme the transformation
+        # Horizontal perspective (left-right skew)
+        h_skew = np.random.normal(0, 0.15)
+        # Vertical perspective (top-bottom skew)
+        v_skew = np.random.normal(0, 0.15)
+        
+        # Limit skew to reasonable values
+        h_skew = max(-0.3, min(0.3, h_skew))
+        v_skew = max(-0.3, min(0.3, v_skew))
+        
+        # Original corners
+        pts1 = np.float32([
+            [0, 0],               # top-left
+            [width, 0],           # top-right
+            [0, height],          # bottom-left
+            [width, height]       # bottom-right
+        ])
+        
+        # New corners after perspective transformation
+        pts2 = np.float32([
+            [width * max(0, -h_skew), height * max(0, -v_skew)],                           # top-left
+            [width * (1 + max(0, h_skew)), height * max(0, -v_skew)],                      # top-right
+            [width * max(0, -h_skew), height * (1 + max(0, v_skew))],                      # bottom-left
+            [width * (1 + max(0, h_skew)), height * (1 + max(0, v_skew))]                  # bottom-right
+        ])
+        
+        # Calculate transformation matrix
+        M = cv2.getPerspectiveTransform(pts1, pts2)
+        
+        # Apply transformation
+        transformed = cv2.warpPerspective(
+            image, 
+            M, 
+            (int(width * 1.5), int(height * 1.5)),
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=(0, 0, 0, 0)
+        )
+        
+        # Find non-zero alpha channel values to crop the result
+        alpha = transformed[:, :, 3]
+        coords = cv2.findNonZero(alpha)
+        
+        if coords is None or len(coords) == 0:
+            return image  # Return original if transform failed
+        
+        # Crop to content
+        x, y, w, h = cv2.boundingRect(coords)
+        cropped = transformed[y:y+h, x:x+w]
+        
+        return cropped
+
+    def _add_noise(self, image: np.ndarray, noise_level: float = 0.1) -> np.ndarray:
+        """
+        Add noise to the image
+        
+        Args:
+            image: Original image (BGR)
+            noise_level: Strength of noise (0.0-1.0)
+            
+        Returns:
+            Noisy image
+        """
+        # Only add noise to RGB channels, not alpha
+        result = image.copy()
+        
+        # Generate noise
+        noise = np.random.normal(0, noise_level * 255, result.shape[:3])
+        
+        # Add noise to color channels only
+        result[:, :, :3] = np.clip(result[:, :, :3] + noise[:, :, :3], 0, 255).astype(np.uint8)
+        
+        return result
+
     def _transform_sticker(self, sticker: np.ndarray, background: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Apply various transformations to a sticker considering background properties
@@ -140,11 +226,12 @@ class SyntheticDataGenerator:
         # Get background information
         bg_color_info, bg_brightness = self._get_background_color_info(background)
         
-        # Calculate target sticker size (around 5% of image area with normal distribution)
+        # Calculate target sticker size (around 0.1-10% of image area with normal distribution)
+        # Modified to have smaller stickers
         bg_area = background.shape[0] * background.shape[1]
-        target_sticker_area_ratio = np.random.normal(0.05, 0.02)
-        # Ensure the ratio is reasonable (between 1% and 15%)
-        target_sticker_area_ratio = max(0.01, min(0.15, target_sticker_area_ratio))
+        target_sticker_area_ratio = np.random.normal(0.03, 0.02)
+        # Ensure the ratio is reasonable (between 0.1% and 10%)
+        target_sticker_area_ratio = max(0.001, min(0.1, target_sticker_area_ratio))
         
         # Calculate scale factor to achieve target area
         original_sticker_area = sticker.shape[0] * sticker.shape[1]
@@ -156,16 +243,23 @@ class SyntheticDataGenerator:
         new_width = int(sticker.shape[1] * scale)
         resized = cv2.resize(sticker, (new_width, new_height))
         
-        # Rotation
-        angle = random.uniform(-30, 30)
-        center = (new_width // 2, new_height // 2)
+        # Apply perspective transformation
+        if random.random() < 0.8:  # 80% chance to apply perspective
+            resized = self._apply_perspective_transform(resized)
+            if resized.size == 0:  # Check if transformation failed
+                # Fallback to original resize
+                resized = cv2.resize(sticker, (new_width, new_height))
+        
+        # Rotation - Full 360 degrees with uniform distribution
+        angle = random.uniform(0, 360)
+        center = (resized.shape[1] // 2, resized.shape[0] // 2)
         rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
         
         # Getting dimensions after rotation to avoid cropping
         abs_cos = abs(rotation_matrix[0, 0])
         abs_sin = abs(rotation_matrix[0, 1])
-        bound_w = int(new_height * abs_sin + new_width * abs_cos)
-        bound_h = int(new_height * abs_cos + new_width * abs_sin)
+        bound_w = int(resized.shape[0] * abs_sin + resized.shape[1] * abs_cos)
+        bound_h = int(resized.shape[0] * abs_cos + resized.shape[1] * abs_sin)
         
         # Adjusting rotation matrix
         rotation_matrix[0, 2] += bound_w / 2 - center[0]
@@ -182,24 +276,25 @@ class SyntheticDataGenerator:
         # Changing brightness and contrast based on background
         hsv = cv2.cvtColor(rotated[:, :, :3], cv2.COLOR_BGR2HSV)
         
-        # Adapt brightness to background (darker background -> darker stickers)
-        brightness_factor = 0.8 + bg_brightness * 0.4  # Range: 0.8-1.2
+        # Enhanced brightness adaptation (more extreme adjustments)
+        # Darker background -> darker stickers or brighter background -> brighter stickers
+        brightness_factor = 0.6 + bg_brightness * 0.8  # Range: 0.6-1.4 (more extreme)
         hsv[:, :, 2] = np.clip(hsv[:, :, 2] * brightness_factor, 0, 255).astype(np.uint8)
         
-        # Slightly shift hue towards background color
-        if random.random() < 0.6:  # Only apply sometimes
-            # Get background hue
+        # More aggressive hue shift towards background color
+        if random.random() < 0.8:  # Increased probability (80%)
+            # Calculate hue shift (more significant shift)
             bg_hue = bg_color_info[0]
-            # Calculate hue shift (small shift towards background hue)
-            hue_shift = (bg_hue - np.mean(hsv[:, :, 0])) * 0.15
+            hue_shift = (bg_hue - np.mean(hsv[:, :, 0])) * 0.25  # Increased from 0.15 to 0.25
             hsv[:, :, 0] = np.clip(hsv[:, :, 0] + hue_shift, 0, 179).astype(np.uint8)
         
-        # Add subtle color tint from background if the background has strong color
-        if bg_color_info[1] > 100:  # If background is colorful enough
-            # Create a color tint overlay
+        # More aggressive color tinting from background
+        # Lower threshold to apply tinting more often
+        if bg_color_info[1] > 50:  # Reduced threshold from 100 to 50
+            # Create a stronger color tint overlay
             overlay = np.ones_like(hsv)
             overlay[:, :, 0] = bg_color_info[0]  # Hue from background
-            overlay[:, :, 1] = min(80, bg_color_info[1] * 0.4)  # Reduced saturation
+            overlay[:, :, 1] = min(100, bg_color_info[1] * 0.5)  # Increased saturation influence
             overlay[:, :, 2] = 255  # Full value
             
             # Convert overlay to BGR
@@ -208,8 +303,8 @@ class SyntheticDataGenerator:
             # Convert sticker to BGR
             sticker_bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
             
-            # Blend (80% sticker, 20% tint)
-            sticker_bgr = cv2.addWeighted(sticker_bgr, 0.85, overlay_bgr, 0.15, 0)
+            # Stronger blend (70% sticker, 30% tint) - more influence from background
+            sticker_bgr = cv2.addWeighted(sticker_bgr, 0.7, overlay_bgr, 0.3, 0)
             
             # Back to HSV
             hsv = cv2.cvtColor(sticker_bgr, cv2.COLOR_BGR2HSV)
@@ -217,11 +312,11 @@ class SyntheticDataGenerator:
         # Back to BGR color space
         rotated_color = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
         
-        # Add shadows based on background brightness
-        if bg_brightness < 0.6:  # Darker background
-            # Create shadow effect
-            shadow_strength = 0.2 + (0.6 - bg_brightness) * 0.4  # Stronger shadow on darker backgrounds
-            kernel_size = int(max(3, min(11, new_height * 0.05)))
+        # Enhanced shadows based on background brightness
+        if bg_brightness < 0.7:  # Increased threshold from 0.6 to 0.7
+            # Create stronger shadow effect
+            shadow_strength = 0.3 + (0.7 - bg_brightness) * 0.6  # Stronger shadow (0.3-0.9)
+            kernel_size = int(max(5, min(15, rotated.shape[0] * 0.08)))  # Larger kernel
             if kernel_size % 2 == 0:
                 kernel_size += 1  # Ensure odd kernel size
             shadow_mask = cv2.GaussianBlur(rotated[:, :, 3].copy(), (kernel_size, kernel_size), 0)
@@ -231,10 +326,25 @@ class SyntheticDataGenerator:
                     rotated_color[:, :, i] * (1 - shadow_strength * shadow_mask / 255.0), 0, 255
                 ).astype(np.uint8)
         
-        # Blur
-        if random.random() < 0.3:
-            blur_size = random.choice([3, 5, 7])
+        # Enhanced brightness extremes (either very bright or very dark)
+        if random.random() < 0.3:  # 30% chance
+            # Extreme bright or dark adjustment
+            if random.random() < 0.5:  # Bright
+                brightness_boost = random.uniform(1.2, 1.5)
+                rotated_color = np.clip(rotated_color * brightness_boost, 0, 255).astype(np.uint8)
+            else:  # Dark
+                darkness_factor = random.uniform(0.5, 0.8)
+                rotated_color = np.clip(rotated_color * darkness_factor, 0, 255).astype(np.uint8)
+        
+        # Increased blur probability and strength
+        if random.random() < 0.4:  # 40% chance (up from 30%)
+            blur_size = random.choice([3, 5, 7, 9])  # Added stronger blur option
             rotated_color = cv2.GaussianBlur(rotated_color, (blur_size, blur_size), 0)
+        
+        # Add noise to the sticker
+        if random.random() < 0.5:  # 50% chance to add noise
+            noise_level = random.uniform(0.05, 0.2)  # Noise strength
+            rotated_color = self._add_noise(rotated_color, noise_level)
         
         # Combining color channels with alpha channel
         final = np.zeros((rotated.shape[0], rotated.shape[1], 4), dtype=np.uint8)
