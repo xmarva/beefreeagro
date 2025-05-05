@@ -20,8 +20,6 @@ class SyntheticDataGenerator:
         output_dir: str,
         annotations_file: str,
         num_images: int = 1000,
-        max_stickers_per_image: int = 5,
-        min_stickers_per_image: int = 1,
         overlap_ratio: float = 0.3,
         random_seed: int = 42
     ):
@@ -34,8 +32,6 @@ class SyntheticDataGenerator:
             output_dir: Path to directory for saving generated images
             annotations_file: File name for saving annotations
             num_images: Number of images to generate
-            max_stickers_per_image: Maximum number of stickers on one image
-            min_stickers_per_image: Minimum number of stickers on one image
             overlap_ratio: Maximum stickers overlap ratio
             random_seed: Seed for random number generator
         """
@@ -44,8 +40,6 @@ class SyntheticDataGenerator:
         self.output_dir = output_dir
         self.annotations_file = annotations_file
         self.num_images = num_images
-        self.max_stickers_per_image = max_stickers_per_image
-        self.min_stickers_per_image = min_stickers_per_image
         self.overlap_ratio = overlap_ratio
         
         # Setting seed for reproducibility
@@ -108,18 +102,56 @@ class SyntheticDataGenerator:
         
         return backgrounds
 
-    def _transform_sticker(self, sticker: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def _get_background_color_info(self, background: np.ndarray) -> Tuple[np.ndarray, float]:
         """
-        Apply various transformations to a sticker
+        Extract dominant color tone and brightness from background
+        
+        Args:
+            background: Background image
+            
+        Returns:
+            Tuple (dominant_color, brightness)
+        """
+        # Convert to HSV for better color analysis
+        hsv_bg = cv2.cvtColor(background, cv2.COLOR_BGR2HSV)
+        
+        # Calculate average HSV values
+        avg_h = np.mean(hsv_bg[:, :, 0])
+        avg_s = np.mean(hsv_bg[:, :, 1])
+        avg_v = np.mean(hsv_bg[:, :, 2])
+        
+        # Calculate brightness (normalized)
+        brightness = avg_v / 255.0
+        
+        # Return dominant color and brightness
+        return np.array([avg_h, avg_s, avg_v]), brightness
+
+    def _transform_sticker(self, sticker: np.ndarray, background: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Apply various transformations to a sticker considering background properties
         
         Args:
             sticker: Original sticker image with alpha channel
+            background: Background image to adapt to
             
         Returns:
             Tuple (transformed image, mask)
         """
+        # Get background information
+        bg_color_info, bg_brightness = self._get_background_color_info(background)
+        
+        # Calculate target sticker size (around 5% of image area with normal distribution)
+        bg_area = background.shape[0] * background.shape[1]
+        target_sticker_area_ratio = np.random.normal(0.05, 0.02)
+        # Ensure the ratio is reasonable (between 1% and 15%)
+        target_sticker_area_ratio = max(0.01, min(0.15, target_sticker_area_ratio))
+        
+        # Calculate scale factor to achieve target area
+        original_sticker_area = sticker.shape[0] * sticker.shape[1]
+        target_sticker_area = bg_area * target_sticker_area_ratio
+        scale = math.sqrt(target_sticker_area / original_sticker_area)
+        
         # Resize (scaling)
-        scale = random.uniform(0.5, 1.5)
         new_height = int(sticker.shape[0] * scale)
         new_width = int(sticker.shape[1] * scale)
         resized = cv2.resize(sticker, (new_width, new_height))
@@ -147,15 +179,57 @@ class SyntheticDataGenerator:
         # Extracting mask from alpha channel
         mask = rotated[:, :, 3] > 128
         
-        # Changing brightness and contrast
+        # Changing brightness and contrast based on background
         hsv = cv2.cvtColor(rotated[:, :, :3], cv2.COLOR_BGR2HSV)
-        # Random brightness adjustment (V)
-        hsv[:, :, 2] = np.clip(hsv[:, :, 2] * random.uniform(0.7, 1.3), 0, 255).astype(np.uint8)
-        # Random saturation adjustment (S)
-        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * random.uniform(0.7, 1.3), 0, 255).astype(np.uint8)
+        
+        # Adapt brightness to background (darker background -> darker stickers)
+        brightness_factor = 0.8 + bg_brightness * 0.4  # Range: 0.8-1.2
+        hsv[:, :, 2] = np.clip(hsv[:, :, 2] * brightness_factor, 0, 255).astype(np.uint8)
+        
+        # Slightly shift hue towards background color
+        if random.random() < 0.6:  # Only apply sometimes
+            # Get background hue
+            bg_hue = bg_color_info[0]
+            # Calculate hue shift (small shift towards background hue)
+            hue_shift = (bg_hue - np.mean(hsv[:, :, 0])) * 0.15
+            hsv[:, :, 0] = np.clip(hsv[:, :, 0] + hue_shift, 0, 179).astype(np.uint8)
+        
+        # Add subtle color tint from background if the background has strong color
+        if bg_color_info[1] > 100:  # If background is colorful enough
+            # Create a color tint overlay
+            overlay = np.ones_like(hsv)
+            overlay[:, :, 0] = bg_color_info[0]  # Hue from background
+            overlay[:, :, 1] = min(80, bg_color_info[1] * 0.4)  # Reduced saturation
+            overlay[:, :, 2] = 255  # Full value
+            
+            # Convert overlay to BGR
+            overlay_bgr = cv2.cvtColor(overlay, cv2.COLOR_HSV2BGR)
+            
+            # Convert sticker to BGR
+            sticker_bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+            
+            # Blend (80% sticker, 20% tint)
+            sticker_bgr = cv2.addWeighted(sticker_bgr, 0.85, overlay_bgr, 0.15, 0)
+            
+            # Back to HSV
+            hsv = cv2.cvtColor(sticker_bgr, cv2.COLOR_BGR2HSV)
         
         # Back to BGR color space
         rotated_color = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        
+        # Add shadows based on background brightness
+        if bg_brightness < 0.6:  # Darker background
+            # Create shadow effect
+            shadow_strength = 0.2 + (0.6 - bg_brightness) * 0.4  # Stronger shadow on darker backgrounds
+            kernel_size = int(max(3, min(11, new_height * 0.05)))
+            if kernel_size % 2 == 0:
+                kernel_size += 1  # Ensure odd kernel size
+            shadow_mask = cv2.GaussianBlur(rotated[:, :, 3].copy(), (kernel_size, kernel_size), 0)
+            shadow = np.zeros_like(rotated_color)
+            for i in range(3):
+                rotated_color[:, :, i] = np.clip(
+                    rotated_color[:, :, i] * (1 - shadow_strength * shadow_mask / 255.0), 0, 255
+                ).astype(np.uint8)
         
         # Blur
         if random.random() < 0.3:
@@ -232,7 +306,7 @@ class SyntheticDataGenerator:
         return intersection_area / min_area
 
     def _place_sticker(self, background: np.ndarray, sticker: Dict, 
-                       placed_bboxes: List[Tuple[int, int, int, int]]) -> Tuple[np.ndarray, Tuple[int, int, int, int], str]:
+                        placed_bboxes: List[Tuple[int, int, int, int]]) -> Tuple[np.ndarray, Tuple[int, int, int, int], str]:
         """
         Place sticker on background considering already placed stickers
         
@@ -244,10 +318,10 @@ class SyntheticDataGenerator:
         Returns:
             Tuple (updated background, new sticker bbox, class name)
         """
-        max_attempts = 20
+        max_attempts = 30  # Increased attempts for better placement chance
         for _ in range(max_attempts):
-            # Transform sticker
-            transformed_sticker, mask = self._transform_sticker(sticker['image'])
+            # Transform sticker with background adaptation
+            transformed_sticker, mask = self._transform_sticker(sticker['image'], background)
             
             # Check that sticker has sufficient area
             if np.sum(mask > 0) < 100:
@@ -325,9 +399,9 @@ class SyntheticDataGenerator:
         # If couldn't place sticker after all attempts
         return background, None, None
 
-    def generate_image_with_all_stickers(self, img_index: int, background_img: np.ndarray) -> str:
+    def generate_image(self, img_index: int, background_img: np.ndarray) -> str:
         """
-        Generate one synthetic image with all stickers placed exactly once
+        Generate one synthetic image with exactly 3 stickers
         
         Args:
             img_index: Image index
@@ -336,39 +410,63 @@ class SyntheticDataGenerator:
         Returns:
             String with annotations for the generated image
         """
+        # Make sure we have at least 3 stickers
+        if len(self.stickers) < 3:
+            print("Error: Need at least 3 stickers to generate images")
+            return ""
+            
         # Create a copy of the background
         background = background_img.copy()
         
-        # List to store placed bboxes
+        # List to store placed bboxes and annotations
         placed_bboxes = []
-        
-        # String for annotations
         annotations = []
         
-        # Place each sticker exactly once
-        for sticker in self.stickers:
-            # Place sticker on the background
+        # Track stickers we've already placed
+        placed_sticker_indices = set()
+        
+        # Try to place exactly 3 stickers (all different)
+        max_placement_attempts = 50  # Total attempts to place all stickers
+        
+        for attempt in range(max_placement_attempts):
+            # If we've already placed all 3 stickers, we're done
+            if len(placed_bboxes) == 3:
+                break
+                
+            # Choose a sticker we haven't placed yet
+            available_indices = [i for i in range(len(self.stickers)) if i not in placed_sticker_indices]
+            
+            # If we've tried all stickers and failed, start over with any sticker
+            if not available_indices:
+                available_indices = list(range(len(self.stickers)))
+                
+            sticker_idx = random.choice(available_indices)
+            sticker = self.stickers[sticker_idx]
+            
+            # Try to place the sticker
             background, bbox, class_name = self._place_sticker(background, sticker, placed_bboxes)
             
             # If sticker was successfully placed
             if bbox is not None:
                 placed_bboxes.append(bbox)
+                placed_sticker_indices.add(sticker_idx)
+                
                 # Add annotation in format (x1,y1)-(x2,y2) class_name
                 annotation = f"({bbox[0]},{bbox[1]})-({bbox[2]},{bbox[3]}) {class_name}"
                 annotations.append(annotation)
         
-        if len(annotations) == 0:
-            # If no stickers were placed, skip this image
-            return ""
+        # Only save images with exactly 3 stickers
+        if len(annotations) == 3:
+            # Save the image
+            output_path = os.path.join(self.output_dir, f"{img_index}.jpg")
+            cv2.imwrite(output_path, background)
             
-        # Save the image
-        output_path = os.path.join(self.output_dir, f"{img_index}.jpg")
-        cv2.imwrite(output_path, background)
-        
-        # Format annotation string
-        annotation_line = f"{img_index}.jpg " + " ".join(annotations)
-        
-        return annotation_line
+            # Format annotation string
+            annotation_line = f"{img_index}.jpg " + " ".join(annotations)
+            return annotation_line
+        else:
+            # If we couldn't place all 3 stickers, return empty string
+            return ""
 
     def generate_dataset(self):
         """Generate the entire dataset"""
@@ -377,16 +475,90 @@ class SyntheticDataGenerator:
         
         with open(annotations_path, 'w', encoding='utf-8') as f:
             img_idx = 0
-            # For each background image
-            for bg_idx, background in enumerate(tqdm(self.backgrounds, desc="Generating images")):
-                # Generate one image with all stickers placed once
-                annotation = self.generate_image_with_all_stickers(img_idx, background)
+            generated_count = 0
+            
+            # Keep generating until we reach num_images or run out of backgrounds
+            pbar = tqdm(total=self.num_images, desc="Generating images")
+            bg_idx = 0
+            
+            while generated_count < self.num_images and bg_idx < len(self.backgrounds):
+                # Get background
+                background = self.backgrounds[bg_idx]
+                
+                # Try to generate image with 3 stickers
+                annotation = self.generate_image(img_idx, background)
+                
+                # If successful, save annotation
                 if annotation:
                     f.write(annotation + '\n')
                     img_idx += 1
+                    generated_count += 1
+                    pbar.update(1)
+                
+                # Move to next background
+                bg_idx += 1
+                
+                # If we've used all backgrounds, start over
+                if bg_idx >= len(self.backgrounds) and generated_count < self.num_images:
+                    print("Used all backgrounds, restarting from the beginning")
+                    bg_idx = 0
+                    # Shuffle backgrounds for variety
+                    random.shuffle(self.backgrounds)
+            
+            pbar.close()
         
-        print(f"Dataset generated and saved to {self.output_dir}")
+        print(f"Dataset generated with {generated_count} images and saved to {self.output_dir}")
         print(f"Annotations saved to {annotations_path}")
+        
+        # Validate annotations
+        self._validate_annotations(annotations_path)
+    
+    def _validate_annotations(self, annotations_path: str):
+        """
+        Validate the created annotations
+        
+        Args:
+            annotations_path: Path to annotations file
+        """
+        print("Validating annotations...")
+        with open(annotations_path, 'r') as f:
+            lines = f.readlines()
+        
+        valid_count = 0
+        invalid_count = 0
+        sticker_counts = []
+        
+        for line in lines:
+            parts = line.strip().split()
+            if len(parts) < 2:
+                print(f"Warning: Invalid line format: {line.strip()}")
+                invalid_count += 1
+                continue
+            
+            # Extract image name
+            img_name = parts[0]
+            
+            # Count annotations for this image
+            annotation_parts = line.strip().split(' ')[1:]
+            annotation_count = 0
+            
+            # Process annotation parts
+            for part in annotation_parts:
+                if ')' in part and '(' in part:
+                    annotation_count += 1
+            
+            sticker_counts.append(annotation_count)
+            
+            # Check if the image has exactly 3 stickers
+            if annotation_count != 3:
+                print(f"Warning: Image {img_name} has {annotation_count} stickers, expected 3")
+                invalid_count += 1
+            else:
+                valid_count += 1
+        
+        print(f"Validation complete: {valid_count} valid images, {invalid_count} invalid images")
+        if sticker_counts:
+            print(f"Average stickers per image: {sum(sticker_counts)/len(sticker_counts):.2f}")
 
 
 def main():
@@ -396,16 +568,12 @@ def main():
                         help='Path to directory with stickers')
     parser.add_argument('--backgrounds_dir', type=str, default='data/raw/backgrounds',
                         help='Path to directory with backgrounds')
-    parser.add_argument('--output_dir', type=str, default='data/synth',
+    parser.add_argument('--output_dir', type=str, default='data/synth/imgs',
                         help='Path to directory for saving generated images')
     parser.add_argument('--annotations_file', type=str, default='annotations.txt',
                         help='File name for saving annotations')
     parser.add_argument('--num_images', type=int, default=1000,
                         help='Number of images to generate')
-    parser.add_argument('--max_stickers', type=int, default=5,
-                        help='Maximum number of stickers on one image')
-    parser.add_argument('--min_stickers', type=int, default=1,
-                        help='Minimum number of stickers on one image')
     parser.add_argument('--overlap_ratio', type=float, default=0.3,
                         help='Maximum stickers overlap ratio')
     parser.add_argument('--random_seed', type=int, default=42,
@@ -429,8 +597,6 @@ def main():
         output_dir=args.output_dir,
         annotations_file=args.annotations_file,
         num_images=args.num_images,
-        max_stickers_per_image=args.max_stickers,
-        min_stickers_per_image=args.min_stickers,
         overlap_ratio=args.overlap_ratio,
         random_seed=args.random_seed
     )
