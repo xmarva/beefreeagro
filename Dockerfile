@@ -52,3 +52,6 @@ CMD ["bash"]
 
 # Для запуска на CPU, можно передать переменную окружения:
 # docker run -e USE_GPU=False ...
+
+# docker build -t beefreeagro .
+# docker run -it --rm  -v C:/Users/User/beefreeagro:/beefreeagro beefreeagro
