@@ -7,3 +7,10 @@ dependencies:
   - opencv
   - numpy
   - tqdm
+  - matplotlib
+  - seaborn
+  - pyyaml
+  - scikit-learn
+  - pip
+  - pip:
+      - ultralytics
