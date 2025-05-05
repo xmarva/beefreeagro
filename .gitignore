@@ -1,2 +1,5 @@
 .DS_Store
 data/
+models/stickers_detector*
+result-dir/
+yolov8n.pt
