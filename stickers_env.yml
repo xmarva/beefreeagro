@@ -12,5 +12,6 @@ dependencies:
   - pyyaml
   - scikit-learn
   - pip
+  - pyyaml
   - pip:
       - ultralytics
