@@ -54,4 +54,7 @@ CMD ["bash"]
 # docker run -e USE_GPU=False ...
 
 # docker build -t beefreeagro .
-# docker run -it --rm  -v C:/Users/User/beefreeagro:/beefreeagro beefreeagro
+# docker run -it --rm --gpus all --shm-size=1g -v C:\Users\User\beefreeagro:/beefree beefreeagro
+# python create_data.py --output_dir data/synth/imgs --annotations_file annotations.txt
+# python -c "import torch; print(torch.cuda.is_available())"
+# python train.py --data_dir data/synth/imgs --annotations data/synth/annotations.txt --epochs 50 --device cuda
