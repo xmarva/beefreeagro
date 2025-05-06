@@ -5,22 +5,12 @@ import argparse
 from pathlib import Path
 import random
 import cv2
+import re
 import numpy as np
 from tqdm import tqdm
 from ultralytics import YOLO
 
 def create_yolo_dataset(data_dir, annotations_file, output_dir, val_split=0.2):
-    """
-    Create a YOLO-compatible dataset from annotations and images.
-    
-    Args:
-        data_dir: Directory containing images
-        annotations_file: Path to annotations file
-        output_dir: Directory to save formatted dataset
-        val_split: Fraction of data to use for validation
-    """
-    import re
-    # Create directories
     os.makedirs(output_dir, exist_ok=True)
     train_dir = os.path.join(output_dir, 'train')
     val_dir = os.path.join(output_dir, 'val')
@@ -29,18 +19,15 @@ def create_yolo_dataset(data_dir, annotations_file, output_dir, val_split=0.2):
         os.makedirs(os.path.join(d, 'images'), exist_ok=True)
         os.makedirs(os.path.join(d, 'labels'), exist_ok=True)
     
-    # Read annotations
     with open(annotations_file, 'r') as f:
         lines = f.readlines()
     
-    # Get unique image names
     image_names = []
     for line in lines:
         image_name = line.split(' ')[0]
         if image_name not in image_names:
             image_names.append(image_name)
     
-    # Shuffle and split
     random.shuffle(image_names)
     val_count = max(1, int(len(image_names) * val_split))
     val_images = image_names[:val_count]
@@ -49,23 +36,18 @@ def create_yolo_dataset(data_dir, annotations_file, output_dir, val_split=0.2):
     print(f"Training images: {len(train_images)}")
     print(f"Validation images: {len(val_images)}")
     
-    # Process annotations and copy images
     class_map = {'happy': 0, 'sad': 1, 'dead': 2}
     
     for img_name in tqdm(image_names, desc="Processing dataset"):
-        # Determine destination
         is_val = img_name in val_images
         dest_dir = val_dir if is_val else train_dir
         
-        # Copy image
         src_img_path = os.path.join(data_dir, img_name)
         dst_img_path = os.path.join(dest_dir, 'images', img_name)
         shutil.copy2(src_img_path, dst_img_path)
         
-        # Get all annotations for this image
         img_annotations = [line for line in lines if line.startswith(img_name + ' ')]
         
-        # Create label file
         label_filename = os.path.splitext(img_name)[0] + '.txt'
         dst_label_path = os.path.join(dest_dir, 'labels', label_filename)
         
@@ -82,12 +64,8 @@ def create_yolo_dataset(data_dir, annotations_file, output_dir, val_split=0.2):
                 parts = annotation.strip().split(' ')
                 img_name_ann = parts[0]
                 
-                # Let's use a more robust parsing approach
-                # The annotation format is expected to be: filename.jpg (x1,y1)-(x2,y2) class
-                # First, let's skip the image name
                 annotation_text = ' '.join(parts[1:])
                 
-                # Now extract all (x,y)-(x,y) class patterns
                 import re
                 box_pattern = r'\((\d+),(\d+)\)-\((\d+),(\d+)\)\s+(\w+)'
                 matches = re.findall(box_pattern, annotation_text)
@@ -102,7 +80,6 @@ def create_yolo_dataset(data_dir, annotations_file, output_dir, val_split=0.2):
                     box_width = (x2 - x1) / width
                     box_height = (y2 - y1) / height
                     
-                    # Class index
                     if class_name not in class_map:
                         print(f"Warning: Unknown class '{class_name}' in {annotation}")
                         continue
@@ -112,7 +89,6 @@ def create_yolo_dataset(data_dir, annotations_file, output_dir, val_split=0.2):
                     # Write to label file
                     label_file.write(f"{class_idx} {center_x} {center_y} {box_width} {box_height}\n")
     
-    # Create YAML config file
     dataset_yaml = {
         'path': os.path.abspath(output_dir),
         'train': os.path.join('train', 'images'),
@@ -127,24 +103,11 @@ def create_yolo_dataset(data_dir, annotations_file, output_dir, val_split=0.2):
     return os.path.join(output_dir, 'dataset.yaml')
 
 def train_model(config_path, model_size='n', epochs=100, batch_size=16, device='auto'):
-    """
-    Train YOLO model on the dataset.
-    
-    Args:
-        config_path: Path to dataset YAML
-        model_size: YOLO model size (n, s, m, l, x)
-        epochs: Number of training epochs
-        batch_size: Batch size
-        device: Device to use ('cpu', 'cuda', or 'auto')
-    """
-    # Create output directory
     output_dir = os.path.join('models')
     os.makedirs(output_dir, exist_ok=True)
     
-    # Initialize model
     model = YOLO(f'yolov8{model_size}.pt')
     
-    # Train model
     results = model.train(
         data=config_path,
         epochs=epochs,
@@ -157,7 +120,6 @@ def train_model(config_path, model_size='n', epochs=100, batch_size=16, device='
         verbose=True
     )
     
-    # Copy best model to a standardized location
     runs_dir = Path(output_dir) / 'stickers_detector'
     
     best_model = runs_dir / 'weights' / 'best.pt'
@@ -195,11 +157,9 @@ def main():
                         help='Device to use for training')
     args = parser.parse_args()
     
-    # Create dataset
     formatted_data_dir = os.path.join('data', 'formatted')
     config_path = create_yolo_dataset(args.data_dir, args.annotations, formatted_data_dir)
     
-    # Train model
     model_path = train_model(
         config_path=config_path,
         model_size=args.model_size,

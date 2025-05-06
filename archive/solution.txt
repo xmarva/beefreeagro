@@ -1,0 +1,72 @@
+Hello,
+
+Preamble:  I had nowhere to print the provided stickers, so I didn’t even want to do this test task. 
+
+           In the end, I created a synthetic dataset. Yes, I know the model trained on synthetic data 
+           will perform worse and there will be a domain gap. That’s easy to fix by fine-tuning the model 
+           on a few dozen labeled real images, which can be labeled with the help of the trained model itself. 
+           
+           Yes, it doesn't work on 'in-the-wild' image with small stikers on the blackboard.
+
+           I didn’t have time to polish or rework the solution — sorry.
+
+GitHub repository: https://github.com/xmarva/beefreeagro  
+Roboflow dataset: https://universe.roboflow.com/eva-7qf7b/beefreeagro
+
+Windows setup guide:    The assignment instructions didn’t specify the version of Windows or Python required.  
+                        You can find a Dockerfile in the repository, which allows you to build the image anywhere. 
+                        All other files are also included.
+
+Synthetic data:
+
+         Creation method: I cut the stickers out from the provided image. I also used the MIT Indoor dataset 
+         (can’t remember the exact name) with photos of room interiors. I applied various augmentations 
+         (spent some time tweaking them) BEFORE pasting the sticker onto the background.
+
+         Augmentations:
+
+         1. Perspective transforms (_apply_perspective_transform) – changing the viewing angle of the sticker 
+            with configurable horizontal and vertical distortion.
+         2. Scaling – adjusting the sticker size relative to the background (from 0.05% to 10% of the image area).
+         3. Rotation – full 360-degree sticker rotation.
+         4. Cutout – randomly removing small sticker parts (1–3 areas, 5–15% of sticker size).
+         5. Edge smoothing – blurring the sticker borders to make it look more natural.
+         6. Brightness adjustment – tuning the sticker’s brightness based on the background brightness.
+         7. Hue shift – changing the sticker’s hue toward the dominant background color.
+         8. Background color toning – overlaying the background tint onto the sticker.
+         9. Shadow addition – adding shadows based on the background lighting.
+         10. Extreme brightness – significantly increasing or decreasing brightness.
+         11. Blur – applying Gaussian blur to the sticker.
+         12. Noise addition – adding random noise to the color channels.
+         13. Black-to-gray conversion – replacing black pixels with different shades of gray.
+
+Model:   YOLOv8n / you can use a different model size, but I chose this one to ensure CPU compatibility.  
+         It's a single-stage object detector that can detect both location and class in one pass.
+
+Metrics: Ultralytics automatically calculates all the metrics, plots training graphs, and shows inference examples.  
+         The main evaluation metric for object detectors is mAP (mean Average Precision).
+
+         - mAP50 – average precision at IoU threshold = 0.5  
+         - mAP50-95 – average precision across multiple IoU thresholds from 0.5 to 0.95 in steps
+
+         Training graphs and metrics can be found in the repo. I didn’t spend time on hyperparameter tuning, 
+         dataset sizing, or anything — just ran it out of the box.
+
+Thoughts: Ultralytics was the simplest way to train the model. Honestly, I don’t see the point in reinventing 
+         the wheel when solid solutions already exist. Yes, I can write a model in PyTorch if needed.  
+         Here are some alternative approaches I’d consider if necessary:
+
+         Two-stage detector (Faster R-CNN) is more accurate but slower.  
+         Or EfficientDet — I like it for other tasks.
+
+         I thought about improving the dataset quality using a GAN, but it was too much of a hassle, so I skipped it.  
+         I also considered printing the stickers once I got back to the city and fine-tuning the model on real data,  
+         but I decided it was better to send the task sooner and not waste more time.  
+         Still, mixing synthetic and real data could have shown how useful the synthetic part actually is.
+
+         If we needed faster inference and smaller model size, Quantization-Aware Training could help — 
+         but as far as I know, it's not implemented in Ultralytics.
+
+Here’s a link to my portfolio website in case you're curious who I am: https://xmarva.github.io
+
+Goodbye and have a nice day.
