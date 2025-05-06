@@ -1,12 +1,24 @@
 Hello,
 
+Run:   create/move test-dir and result-dir 
+       directories in the .\archive directory.
+
+       .\init-gpu.bat
+       python test.py test-dir result-dir
+       exit
+
+       .\init-cpu.bat
+       python test.py test-dir result-dir
+       exit
+
 Preamble:  I had nowhere to print the provided stickers, so I didn’t even want to do this test task. 
 
            In the end, I created a synthetic dataset. Yes, I know the model trained on synthetic data 
            will perform worse and there will be a domain gap. That’s easy to fix by fine-tuning the model 
            on a few dozen labeled real images, which can be labeled with the help of the trained model itself. 
            
-           Yes, it doesn't work on 'in-the-wild' image with small stickers on the blackboard.
+           Yes, it doesn't work on 'in-the-wild' image with small stickers on the blackboard and shows a bad 
+           metric on your test dataset. My goal was to show the idea and method overall here.
 
            I didn’t have time to polish or rework the solution — sorry.
 
@@ -15,10 +27,12 @@ Roboflow dataset: https://universe.roboflow.com/eva-7qf7b/beefreeagro
 
 Windows setup guide:    The assignment instructions didn’t specify the version of Windows, Python or CUDA required.  
                         
-                        I made them, and it totally works on my system, Windows 11, Python 3.10, CUDA 11.8
                         Using Windows and .bat files are a bit... unusual for me.
-                        
-                        You can find a Dockerfile in the repository, as well as commands for build/run/test. 
+
+                        I guess that it was expected to run without the Docker for some reason, but I crammed Docker 
+                        into the .bat files. The system needs internet access to download Docker, repo files and 
+                        dependencies.
+                         
                         All other files are also included in the repo.
 
 Synthetic data:
@@ -36,13 +50,12 @@ Synthetic data:
          4. Cutout – randomly removing small sticker parts (1–3 areas, 5–15% of sticker size).
          5. Edge smoothing – blurring the sticker borders to make it look more natural.
          6. Brightness adjustment – tuning the sticker’s brightness based on the background brightness.
-         7. Hue shift – changing the sticker’s hue toward the dominant background color.
-         8. Background color toning – overlaying the background tint onto the sticker.
-         9. Shadow addition – adding shadows based on the background lighting.
-         10. Extreme brightness – significantly increasing or decreasing brightness.
-         11. Blur – applying Gaussian blur to the sticker.
-         12. Noise addition – adding random noise to the color channels.
-         13. Black-to-gray conversion – replacing black pixels with different shades of gray.
+         7. Background color toning – overlaying the background tint onto the sticker.
+         8. Shadow addition – adding shadows based on the background lighting.
+         9. Extreme brightness – significantly increasing or decreasing brightness.
+         10. Blur – applying Gaussian blur to the sticker.
+         11. Noise addition – adding random noise to the color channels.
+         12. Black-to-gray conversion – replacing black pixels with different shades of gray.
 
 Model:   YOLOv8n / you can use a different model size, but I chose this one to ensure CPU compatibility.  
          It's a single-stage object detector that can detect both location and class in one pass.
@@ -60,17 +73,23 @@ Thoughts: Ultralytics was the simplest way to train the model. Honestly, I don�
          the wheel when solid solutions already exist. Yes, I can write a model in PyTorch if needed.  
          Here are some alternative approaches I’d consider if necessary:
 
-         Two-stage detector (Faster R-CNN) is more accurate but slower.  
-         Or EfficientDet — I like it for other tasks.
+         Two-stage detector like Faster R-CNN is more accurate but slower.  
+         Or maybe EfficientDet — I like it for other tasks.
+
+         For edge devices with limited resources, i could use MobileNetSSD or even a pruned YOLOv8...
 
          I thought about improving the dataset quality using a GAN, but it was too much of a hassle, so I skipped it.  
          I also considered printing the stickers once I got back to the city and fine-tuning the model on real data,  
          but I decided it was better to send the task sooner and not waste more time.  
          Still, mixing synthetic and real data could have shown how useful the synthetic part actually is.
 
-         If we needed faster inference and smaller model size, Quantization-Aware Training could help — 
+         There's also the possibility of implementing an active learning pipeline where the model identifies
+         uncertain detections that could be manually verified, gradually improving performance in the target domain.
+
+         If I needed even faster inference and smaller model size, I could use quantization-aware training
          but as far as I know, it's not implemented in Ultralytics.
 
+I use Caude Sonnet there for some tasks, code review, translation, and consulting on questions outside of my expertise.
 Here’s a link to my portfolio website in case you're curious who I am: https://xmarva.github.io
 
 Goodbye and have a nice day.
