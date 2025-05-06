@@ -6,16 +6,20 @@ Preamble:  I had nowhere to print the provided stickers, so I didn’t even want
            will perform worse and there will be a domain gap. That’s easy to fix by fine-tuning the model 
            on a few dozen labeled real images, which can be labeled with the help of the trained model itself. 
            
-           Yes, it doesn't work on 'in-the-wild' image with small stikers on the blackboard.
+           Yes, it doesn't work on 'in-the-wild' image with small stickers on the blackboard.
 
            I didn’t have time to polish or rework the solution — sorry.
 
 GitHub repository: https://github.com/xmarva/beefreeagro  
 Roboflow dataset: https://universe.roboflow.com/eva-7qf7b/beefreeagro
 
-Windows setup guide:    The assignment instructions didn’t specify the version of Windows or Python required.  
-                        You can find a Dockerfile in the repository, which allows you to build the image anywhere. 
-                        All other files are also included.
+Windows setup guide:    The assignment instructions didn’t specify the version of Windows, Python or CUDA required.  
+                        
+                        I made them, and it totally works on my system, Windows 11, Python 3.10, CUDA 11.8
+                        Using Windows and .bat files are a bit... unusual for me.
+                        
+                        You can find a Dockerfile in the repository, as well as commands for build/run/test. 
+                        All other files are also included in the repo.
 
 Synthetic data:
 
