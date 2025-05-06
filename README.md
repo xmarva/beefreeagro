@@ -24,7 +24,9 @@ beefreeagro/
 ├── scripts/
 │   ├── init-cpu.bat     # Windows setup script for CPU
 │   └── init-gpu.bat     # Windows setup script for GPU
-├── create_data.py       # Script for synthetic dataset creation
+├── generate_dataset.py
+├── image_transformations.py
+├── data_generator.py
 ├── train.py             # Training script
 ├── test.py              # Testing/inference script
 ├── stickers_env.yml     # Conda environment file
@@ -78,7 +80,7 @@ You can [download raw data here](https://drive.google.com/file/d/13Z_CTtKU9mfbX-
 
 ### 2. Generate Synthetic Dataset
 ```bash
-python create_data.py --output_dir data/synth/imgs --annotations_file annotations.txt
+python generate_dataset.py --output_dir data/synth/imgs --annotations_file annotations.txt
 ```
 
 You can [download the synthetic dataset here](https://universe.roboflow.com/eva-7qf7b/beefreeagro)
