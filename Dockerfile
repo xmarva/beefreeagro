@@ -1,5 +1,11 @@
-# Базовый образ с поддержкой CUDA для работы с GPU
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+ARG BUILD_TYPE=gpu
+
+# Базовый образ: с CUDA для GPU или ubuntu для CPU
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 AS gpu-base
+FROM ubuntu:22.04 AS cpu-base
+
+# Выбираем нужный базовый образ в зависимости от BUILD_TYPE
+FROM ${BUILD_TYPE}-base
 
 # Установка необходимых пакетов
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -34,27 +40,24 @@ RUN conda env create -f /tmp/stickers_env.yml
 RUN echo "source activate stickers_env" > ~/.bashrc
 ENV PATH /opt/conda/envs/stickers_env/bin:$PATH
 
-# Устанавливаем PyTorch с поддержкой CUDA
-RUN pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118
+# Устанавливаем PyTorch с поддержкой CUDA для GPU или без для CPU
+RUN if [ "$BUILD_TYPE" = "gpu" ] ; then \
+        pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118 ; \
+    else \
+        pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu ; \
+    fi
 
-# Устанавливаем дополнительные зависимости (если будут нужны)
+# Устанавливаем дополнительные зависимости
 RUN pip install pillow
 
+# Клонирование репозитория
+RUN git clone https://github.com/xmarva/beefreeagro.git /beefreeagro
+
 # Рабочая директория
-RUN git clone https://github.com/xmarva/beefreeagro.git
-WORKDIR /beefree
+WORKDIR /beefreeagro
 
 # Переменная окружения для определения, использовать ли GPU
-ENV USE_GPU=True
+ENV USE_GPU=${BUILD_TYPE}
 
 # Команда для запуска при старте контейнера
 CMD ["bash"]
-
-# Для запуска на CPU, можно передать переменную окружения:
-# docker run -e USE_GPU=False ...
-
-# docker build -t beefreeagro .
-# docker run -it --rm --gpus all --shm-size=1g -v C:\Users\User\beefreeagro:/beefree beefreeagro
-# python create_data.py --output_dir data/synth/imgs --annotations_file annotations.txt
-# python -c "import torch; print(torch.cuda.is_available())"
-# python train.py --data_dir data/synth/imgs --annotations data/synth/annotations.txt --epochs 50 --device cuda
