@@ -1,7 +1,7 @@
 # BeeFreeAgro
 
 <div align="center">
-  <img src="imgs/synthetic-data.png" alt="beefreeagro logo" width="300"/>
+  <img src="imgs/synthetic-data.png" alt="beefreeagro logo" width="600"/>
 </div>
 
 ## Overview
@@ -118,7 +118,7 @@ Parameters:
 - `--conf`: Confidence threshold for detections
 
 <div align="center">
-  <img src="imgs/training-graph.png" alt="beefreeagro logo" width="300"/>
+  <img src="imgs/training-graph.png" alt="beefreeagro logo" width="600"/>
 </div>
 
 Output format:
