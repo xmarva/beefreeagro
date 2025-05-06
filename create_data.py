@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 import os
 import cv2
 import numpy as np
@@ -25,7 +24,6 @@ class SyntheticDataGenerator:
     ):
         """
         Initialization of synthetic data generator
-        
         Args:
             stickers_dir: Path to directory with stickers
             backgrounds_dir: Path to directory with backgrounds
@@ -41,7 +39,6 @@ class SyntheticDataGenerator:
         self.annotations_file = annotations_file
         self.num_images = num_images
         self.overlap_ratio = overlap_ratio
-        
         # Setting seed for reproducibility
         random.seed(random_seed)
         np.random.seed(random_seed)
@@ -52,19 +49,16 @@ class SyntheticDataGenerator:
         # Loading all stickers and backgrounds
         self.stickers = self._load_stickers()
         self.backgrounds = self._load_backgrounds()
-        
         print(f"Loaded {len(self.stickers)} stickers and {len(self.backgrounds)} backgrounds")
 
     def _load_stickers(self) -> List[Dict]:
         """Loading stickers from directory"""
         stickers = []
-        
         for file in os.listdir(self.stickers_dir):
             if file.lower().endswith(('.png')):
                 path = os.path.join(self.stickers_dir, file)
                 # Loading image with alpha channel
                 img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-                
                 if img is None:
                     print(f"Error loading sticker: {path}")
                     continue
@@ -76,39 +70,31 @@ class SyntheticDataGenerator:
                 
                 # Get class name from file name (without extension)
                 class_name = os.path.splitext(file)[0]
-                
                 stickers.append({
                     'name': class_name,
                     'image': img,
                     'path': path
                 })
-        
         return stickers
 
     def _load_backgrounds(self) -> List[np.ndarray]:
         """Loading backgrounds from directory"""
         backgrounds = []
-        
         for file in os.listdir(self.backgrounds_dir):
             if file.lower().endswith(('.jpg', '.jpeg', '.png')):
                 path = os.path.join(self.backgrounds_dir, file)
                 img = cv2.imread(path)
-                
                 if img is None:
                     print(f"Error loading background: {path}")
                     continue
-                
                 backgrounds.append(img)
-        
         return backgrounds
 
     def _get_background_color_info(self, background: np.ndarray) -> Tuple[np.ndarray, float]:
         """
         Extract dominant color tone and brightness from background
-        
         Args:
             background: Background image
-            
         Returns:
             Tuple (dominant_color, brightness)
         """
@@ -129,10 +115,8 @@ class SyntheticDataGenerator:
     def _apply_perspective_transform(self, image: np.ndarray) -> np.ndarray:
         """
         Apply perspective transformation to the image
-        
         Args:
             image: Original image with alpha channel
-            
         Returns:
             Perspective transformed image
         """
@@ -141,28 +125,27 @@ class SyntheticDataGenerator:
         # Generate perspective transformation parameters with normal distribution
         # The larger the values, the more extreme the transformation
         # Horizontal perspective (left-right skew)
-        h_skew = np.random.normal(0, 0.15)
-        # Vertical perspective (top-bottom skew)
-        v_skew = np.random.normal(0, 0.15)
+        h_skew = np.random.normal(0, 0.4)  # было 0.15
+        v_skew = np.random.normal(0, 0.4)  # было 0.15
         
-        # Limit skew to reasonable values
-        h_skew = max(-0.3, min(0.3, h_skew))
-        v_skew = max(-0.3, min(0.3, v_skew))
+        # Limit skew to more extreme values
+        h_skew = max(-0.8, min(0.8, h_skew))  # было -0.3, 0.3
+        v_skew = max(-0.8, min(0.8, v_skew))  # было -0.3, 0.3
         
         # Original corners
         pts1 = np.float32([
-            [0, 0],               # top-left
-            [width, 0],           # top-right
-            [0, height],          # bottom-left
-            [width, height]       # bottom-right
+            [0, 0],            # top-left
+            [width, 0],        # top-right
+            [0, height],       # bottom-left
+            [width, height]    # bottom-right
         ])
         
         # New corners after perspective transformation
         pts2 = np.float32([
-            [width * max(0, -h_skew), height * max(0, -v_skew)],                           # top-left
-            [width * (1 + max(0, h_skew)), height * max(0, -v_skew)],                      # top-right
-            [width * max(0, -h_skew), height * (1 + max(0, v_skew))],                      # bottom-left
-            [width * (1 + max(0, h_skew)), height * (1 + max(0, v_skew))]                  # bottom-right
+            [width * max(0, -h_skew), height * max(0, -v_skew)],            # top-left
+            [width * (1 + max(0, h_skew)), height * max(0, -v_skew)],       # top-right
+            [width * max(0, -h_skew), height * (1 + max(0, v_skew))],       # bottom-left
+            [width * (1 + max(0, h_skew)), height * (1 + max(0, v_skew))]   # bottom-right
         ])
         
         # Calculate transformation matrix
@@ -170,8 +153,8 @@ class SyntheticDataGenerator:
         
         # Apply transformation
         transformed = cv2.warpPerspective(
-            image, 
-            M, 
+            image,
+            M,
             (int(width * 1.5), int(height * 1.5)),
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=(0, 0, 0, 0)
@@ -180,24 +163,20 @@ class SyntheticDataGenerator:
         # Find non-zero alpha channel values to crop the result
         alpha = transformed[:, :, 3]
         coords = cv2.findNonZero(alpha)
-        
         if coords is None or len(coords) == 0:
             return image  # Return original if transform failed
         
         # Crop to content
         x, y, w, h = cv2.boundingRect(coords)
         cropped = transformed[y:y+h, x:x+w]
-        
         return cropped
 
     def _add_noise(self, image: np.ndarray, noise_level: float = 0.1) -> np.ndarray:
         """
         Add noise to the image
-        
         Args:
             image: Original image (BGR)
             noise_level: Strength of noise (0.0-1.0)
-            
         Returns:
             Noisy image
         """
@@ -209,17 +188,107 @@ class SyntheticDataGenerator:
         
         # Add noise to color channels only
         result[:, :, :3] = np.clip(result[:, :, :3] + noise[:, :, :3], 0, 255).astype(np.uint8)
+        return result
+
+    def _apply_cutout(self, image: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Apply cutout augmentation to the sticker
+        Args:
+            image: Original sticker image with alpha channel
+            mask: Binary mask of the sticker
+        Returns:
+            Tuple (augmented image, updated mask)
+        """
+        # Only apply cutout where the mask is non-zero
+        if np.sum(mask) == 0:
+            return image, mask
+            
+        # Determine number of cutouts (1-3)
+        num_cutouts = random.randint(1, 3)
+        
+        # Create a copy of the image and mask
+        result = image.copy()
+        result_mask = mask.copy()
+        
+        # Find the bounding box of the mask
+        y_indices, x_indices = np.where(mask > 0)
+        if len(y_indices) == 0 or len(x_indices) == 0:
+            return image, mask
+            
+        min_x, max_x = np.min(x_indices), np.max(x_indices)
+        min_y, max_y = np.min(y_indices), np.max(y_indices)
+        
+        # Define the size range for cutouts (relative to sticker size)
+        width = max_x - min_x
+        height = max_y - min_y
+        
+        for _ in range(num_cutouts):
+            # Random size for cutout (5-15% of the sticker dimensions)
+            cutout_width = int(random.uniform(0.05, 0.15) * width)
+            cutout_height = int(random.uniform(0.05, 0.15) * height)
+            
+            # Ensure cutout has minimum size
+            cutout_width = max(5, cutout_width)
+            cutout_height = max(5, cutout_height)
+            
+            # Random position within the mask bounds
+            x = random.randint(min_x, max(min_x, max_x - cutout_width))
+            y = random.randint(min_y, max(min_y, max_y - cutout_height))
+            
+            # Set alpha to zero for the cutout region (only where the mask is already non-zero)
+            cutout_region = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+            cutout_region[y:y+cutout_height, x:x+cutout_width] = 1
+            
+            # Only apply cutout where the mask is already non-zero
+            cutout_area = cutout_region & (mask > 0)
+            
+            # Set alpha channel to zero in cutout area
+            result[:, :, 3][cutout_area > 0] = 0
+            result_mask[cutout_area > 0] = 0
+            
+        return result, result_mask
+
+    def _smooth_edges(self, image: np.ndarray) -> np.ndarray:
+        """
+        Smooth the edges of the sticker to reduce sharp boundaries
+        Args:
+            image: Original sticker image with alpha channel
+        Returns:
+            Sticker with smoothed edges
+        """
+        # Create a copy of the image
+        result = image.copy()
+        
+        # Extract alpha channel
+        alpha = result[:, :, 3].copy()
+        
+        # Create a slightly blurred version of the alpha channel for the edge detection
+        blurred_alpha = cv2.GaussianBlur(alpha, (5, 5), 0)
+        
+        # Find edges in the alpha channel
+        edges = cv2.Canny(blurred_alpha, 50, 150)
+        
+        # Dilate the edges to get a wider border area
+        kernel = np.ones((3, 3), np.uint8)
+        edge_area = cv2.dilate(edges, kernel, iterations=2)
+        
+        # Create a gradient mask from the original alpha channel
+        gradient_mask = cv2.GaussianBlur(alpha, (9, 9), 0)
+        
+        # Apply the gradient mask to the edge areas
+        alpha[edge_area > 0] = gradient_mask[edge_area > 0]
+        
+        # Update the alpha channel in the result
+        result[:, :, 3] = alpha
         
         return result
 
     def _transform_sticker(self, sticker: np.ndarray, background: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Apply various transformations to a sticker considering background properties
-        
         Args:
             sticker: Original sticker image with alpha channel
             background: Background image to adapt to
-            
         Returns:
             Tuple (transformed image, mask)
         """
@@ -230,8 +299,9 @@ class SyntheticDataGenerator:
         # Modified to have smaller stickers
         bg_area = background.shape[0] * background.shape[1]
         target_sticker_area_ratio = np.random.normal(0.03, 0.02)
+        
         # Ensure the ratio is reasonable (between 0.1% and 10%)
-        target_sticker_area_ratio = max(0.001, min(0.1, target_sticker_area_ratio))
+        target_sticker_area_ratio = max(0.0005, min(0.1, target_sticker_area_ratio))
         
         # Calculate scale factor to achieve target area
         original_sticker_area = sticker.shape[0] * sticker.shape[1]
@@ -241,15 +311,21 @@ class SyntheticDataGenerator:
         # Resize (scaling)
         new_height = int(sticker.shape[0] * scale)
         new_width = int(sticker.shape[1] * scale)
+        if new_height < 1 or new_width < 1:
+            # Используем стандартный для Python оператор pass вместо continue,
+            # поскольку это не цикл
+            return np.zeros((1, 1, 4), dtype=np.uint8), np.zeros((1, 1), dtype=np.uint8)
+            
         resized = cv2.resize(sticker, (new_width, new_height))
         
         # Apply perspective transformation
-        if random.random() < 0.8:  # 80% chance to apply perspective
+        if random.random() < 0.9:  # 90% chance to apply perspective
             resized = self._apply_perspective_transform(resized)
-            if resized.size == 0:  # Check if transformation failed
-                # Fallback to original resize
-                resized = cv2.resize(sticker, (new_width, new_height))
-        
+            
+        if resized.size == 0:  # Check if transformation failed
+            # Fallback to original resize
+            resized = cv2.resize(sticker, (new_width, new_height))
+            
         # Rotation - Full 360 degrees with uniform distribution
         angle = random.uniform(0, 360)
         center = (resized.shape[1] // 2, resized.shape[0] // 2)
@@ -266,12 +342,19 @@ class SyntheticDataGenerator:
         rotation_matrix[1, 2] += bound_h / 2 - center[1]
         
         # Applying rotation
-        rotated = cv2.warpAffine(resized, rotation_matrix, (bound_w, bound_h), 
-                                borderMode=cv2.BORDER_CONSTANT, 
+        rotated = cv2.warpAffine(resized, rotation_matrix, (bound_w, bound_h),
+                                borderMode=cv2.BORDER_CONSTANT,
                                 borderValue=(0, 0, 0, 0))
         
         # Extracting mask from alpha channel
         mask = rotated[:, :, 3] > 128
+        
+        # Apply cutout augmentation (new functionality)
+        if random.random() < 0.7:  # 70% chance to apply cutout
+            rotated, mask = self._apply_cutout(rotated, mask)
+        
+        # Smooth edges to reduce sharp boundaries (new functionality)
+        rotated = self._smooth_edges(rotated)
         
         # Changing brightness and contrast based on background
         hsv = cv2.cvtColor(rotated[:, :, :3], cv2.COLOR_BGR2HSV)
@@ -330,7 +413,7 @@ class SyntheticDataGenerator:
         if random.random() < 0.3:  # 30% chance
             # Extreme bright or dark adjustment
             if random.random() < 0.5:  # Bright
-                brightness_boost = random.uniform(1.2, 1.5)
+                brightness_boost = random.uniform(1.2, 2.0)
                 rotated_color = np.clip(rotated_color * brightness_boost, 0, 255).astype(np.uint8)
             else:  # Dark
                 darkness_factor = random.uniform(0.5, 0.8)
@@ -342,9 +425,23 @@ class SyntheticDataGenerator:
             rotated_color = cv2.GaussianBlur(rotated_color, (blur_size, blur_size), 0)
         
         # Add noise to the sticker
-        if random.random() < 0.5:  # 50% chance to add noise
+        if random.random() < 0.1:  # 10% chance to add noise
             noise_level = random.uniform(0.05, 0.2)  # Noise strength
             rotated_color = self._add_noise(rotated_color, noise_level)
+        
+        # Делаем черный цвет более серым (новая функциональность)
+        # Находим темные участки (близкие к черному)
+        dark_pixels = np.all(rotated_color < 30, axis=2)
+        
+        # Преобразуем черный в серый оттенок
+        if np.any(dark_pixels):
+            # Определяем новый серый цвет (случайный оттенок серого)
+            gray_value = random.randint(30, 80)
+            gray_color = np.array([gray_value, gray_value, gray_value])
+            
+            # Заменяем черные пиксели на серые
+            for i in range(3):
+                rotated_color[:, :, i][dark_pixels] = gray_color[i]
         
         # Combining color channels with alpha channel
         final = np.zeros((rotated.shape[0], rotated.shape[1], 4), dtype=np.uint8)
@@ -356,16 +453,13 @@ class SyntheticDataGenerator:
     def _calculate_bbox(self, mask: np.ndarray) -> Tuple[int, int, int, int]:
         """
         Calculate bounding box from mask
-        
         Args:
             mask: Binary sticker mask
-            
         Returns:
             Tuple (x1, y1, x2, y2) of rectangle coordinates
         """
         # Find all non-zero elements of the mask
         y_indices, x_indices = np.where(mask > 0)
-        
         if len(y_indices) == 0 or len(x_indices) == 0:
             return (0, 0, 0, 0)
         
@@ -380,11 +474,9 @@ class SyntheticDataGenerator:
     def _calculate_overlap(self, bbox1: Tuple[int, int, int, int], bbox2: Tuple[int, int, int, int]) -> float:
         """
         Calculate overlap ratio between two bboxes
-        
         Args:
             bbox1: First bounding box (x1, y1, x2, y2)
             bbox2: Second bounding box (x1, y1, x2, y2)
-            
         Returns:
             Ratio of intersection area to the smaller bbox area
         """
@@ -408,23 +500,20 @@ class SyntheticDataGenerator:
         
         # Find minimum area
         min_area = min(bbox1_area, bbox2_area)
-        
         if min_area == 0:
             return 0.0
-            
+        
         # Calculate ratio
         return intersection_area / min_area
 
-    def _place_sticker(self, background: np.ndarray, sticker: Dict, 
-                        placed_bboxes: List[Tuple[int, int, int, int]]) -> Tuple[np.ndarray, Tuple[int, int, int, int], str]:
+    def _place_sticker(self, background: np.ndarray, sticker: Dict,
+                      placed_bboxes: List[Tuple[int, int, int, int]]) -> Tuple[np.ndarray, Tuple[int, int, int, int], str]:
         """
         Place sticker on background considering already placed stickers
-        
         Args:
             background: Background image
             sticker: Dictionary with sticker information
             placed_bboxes: List of already placed bboxes
-            
         Returns:
             Tuple (updated background, new sticker bbox, class name)
         """
@@ -436,10 +525,9 @@ class SyntheticDataGenerator:
             # Check that sticker has sufficient area
             if np.sum(mask > 0) < 100:
                 continue
-                
+            
             # Calculate bbox for transformed sticker
             bbox_sticker = self._calculate_bbox(mask)
-            
             sticker_width = bbox_sticker[2] - bbox_sticker[0]
             sticker_height = bbox_sticker[3] - bbox_sticker[1]
             
@@ -452,10 +540,8 @@ class SyntheticDataGenerator:
             # Choose random position for placement
             max_x = background.shape[1] - sticker_width
             max_y = background.shape[0] - sticker_height
-            
             if max_x <= 0 or max_y <= 0:
                 continue
-                
             x_pos = random.randint(0, max_x)
             y_pos = random.randint(0, max_y)
             
@@ -474,33 +560,32 @@ class SyntheticDataGenerator:
                 if overlap > self.overlap_ratio:
                     overlap_too_much = True
                     break
-            
             if overlap_too_much:
                 continue
             
             # Create ROI for sticker placement
             roi = background[
-                y_pos:y_pos + transformed_sticker.shape[0], 
+                y_pos:y_pos + transformed_sticker.shape[0],
                 x_pos:x_pos + transformed_sticker.shape[1]
             ]
             
             # Check ROI and sticker dimensions
             if roi.shape[0] < transformed_sticker.shape[0] or roi.shape[1] < transformed_sticker.shape[1]:
                 continue
-                
+            
             # Create copy of ROI for sticker overlay
             roi_copy = roi.copy()
             
             # Overlay sticker considering alpha channel
             for i in range(3):  # BGR channels
                 roi_copy[:, :, i] = (
-                    roi[:, :, i] * (1 - transformed_sticker[:, :, 3] / 255.0) + 
+                    roi[:, :, i] * (1 - transformed_sticker[:, :, 3] / 255.0) +
                     transformed_sticker[:, :, i] * (transformed_sticker[:, :, 3] / 255.0)
                 )
             
             # Update background
             background[
-                y_pos:y_pos + transformed_sticker.shape[0], 
+                y_pos:y_pos + transformed_sticker.shape[0],
                 x_pos:x_pos + transformed_sticker.shape[1]
             ] = roi_copy
             

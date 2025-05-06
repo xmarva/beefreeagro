@@ -1,7 +1,7 @@
 # BeeFreeAgro
 
 <div align="center">
-  <img src="data/synth/imgs/1.jpg" alt="beefreeagro logo" width="300"/>
+  <img src="imgs/synthetic-data.png" alt="beefreeagro logo" width="300"/>
 </div>
 
 ## Overview
@@ -14,9 +14,12 @@ beefreeagro/
 │   ├── raw/
 │   │   ├── stickers/    # Place sticker images here
 │   │   └── background/  # Place your background images here
-│   └── synth/           # Generated synthetic dataset
-│       ├── imgs/        # Images with stickers placed on backgrounds
-│       └── annotations.txt  # Generated annotations for training
+│   │── synth/           # Generated synthetic dataset
+│   │   ├── imgs/        # Images with stickers placed on backgrounds
+│   │   └── annotations.txt  # Generated annotations for training
+│   └── yolo_dataset/    # Dataset in YOLO format
+│       ├── train/    
+│       └── val/
 ├── models/              # Trained models will be saved here
 ├── scripts/
 │   ├── init-cpu.bat     # Windows setup script for CPU
@@ -27,7 +30,7 @@ beefreeagro/
 ├── stickers_env.yml     # Conda environment file
 ├── requirements.txt     # Python dependencies
 ├── Dockerfile           # For Docker-based setup
-└── README.md            # This file
+└── README.md      
 ```
 
 ## Setup Instructions
@@ -75,10 +78,10 @@ You can [download raw data here](https://drive.google.com/file/d/13Z_CTtKU9mfbX-
 
 ### 2. Generate Synthetic Dataset
 ```bash
-python create_data.py --output_dir data/synth/imgs --annotations_file data/synth/annotations.txt
+python create_data.py --output_dir data/synth/imgs --annotations_file annotations.txt
 ```
 
-You can download the synthetic dataset here
+You can [download the synthetic dataset here](https://universe.roboflow.com/eva-7qf7b/beefreeagro)
 
 This will:
 - Generate synthetic images with stickers placed on backgrounds
@@ -87,10 +90,13 @@ This will:
 ### 3. Train the Model
 ```bash
 # For GPU training
-python train.py --data_dir data/synth/imgs --annotations data/synth/annotations.txt --epochs 50 --model_size n --device cuda
+
+python train.py create --data_dir data/synth/imgs --annotations data/synth/annotations.txt --output_dir data/formatted --epochs 50 --model_size n --device cuda --batch 4
+python train.py use --dataset_dir yolo_dataset --model_size n --epochs 50 --device cuda --batch 4
 
 # For CPU training
-python train.py --data_dir data/synth/imgs --annotations data/synth/annotations.txt --epochs 50 --model_size n --device cpu
+python train.py create --data_dir data/synth/imgs --annotations data/synth/annotations.txt --output_dir data/formatted --epochs 50 --model_size n --device cpu --batch 4
+python train.py use --dataset_dir yolo_dataset --model_size n --epochs 50 --device cpu --batch 4
 ```
 
 Parameters:
@@ -110,6 +116,10 @@ Parameters:
 - `result_dir`: Directory to save detection results
 - `--model`: Path to trained model
 - `--conf`: Confidence threshold for detections
+
+<div align="center">
+  <img src="imgs/training-graph.png" alt="beefreeagro logo" width="300"/>
+</div>
 
 Output format:
 ```
